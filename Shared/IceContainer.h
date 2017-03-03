@@ -172,6 +172,7 @@
 				Container&		FindPrev(udword& entry, bool wrap=false);
 		// Data access.
 		inline_	udword			GetNbEntries()					const	{ return mCurNbEntries;		}	//!< Returns the current number of entries.
+		inline_ udword			GetCapacity()					const	{ return mMaxNbEntries;		}	//!< Returns the current capacity.
 		inline_	udword			GetEntry(udword i)				const	{ return mEntries[i];		}	//!< Returns ith entry
 		inline_	udword*			GetEntries()					const	{ return mEntries;			}	//!< Returns the list of entries.
 

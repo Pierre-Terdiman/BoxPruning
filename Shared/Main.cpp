@@ -95,7 +95,7 @@ static void RunPerformanceTest()
 //	Pairs.SetSize(25000*2);
 //	Pairs.Reset();
 #endif
-	const udword NB = 16;
+	const udword NB = 64;
 
 	// Test "complete" pruning
 	if(1)
@@ -106,7 +106,7 @@ static void RunPerformanceTest()
 		if(1)
 		{
 			// Brute-force
-			for(udword i=0;i<NB;i++)
+//			for(udword i=0;i<NB;i++)
 			{
 #ifdef USE_STL
 				Pairs.clear();
@@ -173,17 +173,20 @@ static void RunPerformanceTest()
 		udword MinTime = 0xffffffff;
 		udword Time;
 
-		// Brute-force
-		for(udword i=0;i<NB;i++)
+		if(0)
 		{
-			Pairs.Reset();
-			StartProfile(Time);
-				BruteForceBipartiteBoxTest(NbBoxes0, List, NbBoxes1, List1, Pairs);
-			EndProfile(Time);
-			if(Time<MinTime)
-				MinTime = Time;
+			// Brute-force
+			for(udword i=0;i<NB;i++)
+			{
+				Pairs.Reset();
+				StartProfile(Time);
+					BruteForceBipartiteBoxTest(NbBoxes0, List, NbBoxes1, List1, Pairs);
+				EndProfile(Time);
+				if(Time<MinTime)
+					MinTime = Time;
+			}
+			printf("Bipartite test (brute force): found %d intersections in %d K-cycles.\n", Pairs.GetNbEntries()>>1, MinTime/1024);
 		}
-		printf("Bipartite test (brute force): found %d intersections in %d K-cycles.\n", Pairs.GetNbEntries()>>1, MinTime/1024);
 
 		// Optimized
 		MinTime = 0xffffffff;
