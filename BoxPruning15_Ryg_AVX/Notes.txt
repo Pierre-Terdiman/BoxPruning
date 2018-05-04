@@ -1,0 +1,263 @@
+Here's what I did to the code to arrive at the current version:
+
+I already wrote a note on the earlier changes that were just cleaning up
+the ASM code and unrolling it a bit. That text file is a gist and
+available here:
+
+  https://gist.github.com/rygorous/fdd41f45b24472649aaeb5b55bbe6e26
+
+...and then someone on Twitter asked "what if you used AVX instead of
+SSE2?". My initial response boiled down to "that's not gonna work with
+how the loop is currently set up". The problem is that the original idea
+of having one box=4 floats, doing all 4 compares with a single SSE
+compare, doing a movemask, and then checking whether we get the number
+that means "box intersects" (12 in the original case) fundamentally doesn't
+translate well to 8-wide: now instead of one box per compare, we're testing
+two (let's call them box1[0] and box1[1]), and instead of two possible
+outcomes, we now have four, where ? stands for any hex digit but 'c':
+
+1. Both box1[0] and box1[1] intersect box0. (=movemask gives 0xcc)
+2. box1[0] intersects box0, box1[1] doesn't. (=movemask gives 0x?c)
+3. box1[1] intersects box0, box1[0] doesn't. (=movemask gives 0xc?)
+4. neither intersects box0. (=movemask gives 0x??)
+
+Instead of the previous solution where we had exactly one value to compare
+against, now we need to do a more expensive test like "(mask & 0xf) == 12 ||
+(mask & 0xf0) == 0xc0". Not the end of the world, but it means something
+like
+
+  mov tmp, eax  
+  and tmp, 15
+  cmp tmp, 12
+  je  FoundOne
+  and eax, 15
+  cmp eax, 12
+  je  FoundOne
+
+which is one more temp register required and several extra uops, and as
+we saw in the gist, this loop was pretty tight before. Whenever something
+like this happens, it's a sign that you're working against the grain of
+the hardware and you should maybe take a step back and consider
+something different.
+
+That "something different" in this case was converting the loop to use a
+SoA layout (structure of arrays, google it, enough has been written about
+it elsewhere) and doing some back of the envelope math (also in this
+repository, "notes_avx.txt") to figure out how much work that would be
+per loop iteration. End result: 12 fused uops per iter to process *8*
+boxes (instead of 20 fused uops/iter to process 4 using SSE2!), still
+with a fairly decent load balance across the ports. This could be a win,
+and not just for AVX, but with SSE2 as well.
+
+Addressing
+----------
+
+The first problem was that this code is 32-bit x86, which is register-
+starved, and going to SoA means we (in theory) need to keep around five
+pointers in the main loop, instead of just one.
+
+Possible (barely) but very inconvenient, and there's no way you want to
+be incrementing all of them. Luckily, we don't have to: the first
+observation is that all the arrays we advance through have the same
+element stride (four bytes), so we don't actually need to keep incrementing
+5 pointers, because the distances between the pointers always stay the same.
+We can just compute those distances, increment *one* of the pointers, and
+use [reg1+reg2] addressing modes to compute the rest on the fly.
+
+The second trick is to use x86's scaling indexing addressing modes: we can
+not just use address expressions [reg1+reg2], but also [reg1+reg2*2],
+[reg1+reg2*4] and [reg1+reg2*8] (left-shifts by 0 through 3). The *8 version
+is not very useful to use unless we want to add a lot of padding since
+we're just dealing with 6 arrays, but that narrows us down to four choices:
+
+1. [base_ptr]
+2. [base_ptr + dist]
+3. [base_ptr + dist*2]
+4. [base_ptr + dist*4]
+
+and we need to address five arrays in the main loop. So spending only 2
+registers isn't really practical unless we want to allocate a bunch of
+extra memory. I opted against it, and choose 2 "dist" registers, one
+being the negation of the other. That means we can use the following:
+
+1. [base_ptr]
+2. [base_ptr + dist_pos]
+3. [base_ptr + dist_pos*2]
+4. [base_ptr - dist_pos] = [base_ptr + dist_neg]
+5. [base_ptr - dist_pos*2] = [base_ptr + dist_neg*2]
+
+ta-daa, five pointers in three registers with only one increment per
+loop iteration. The layout I chose arranges the arrays as follows:
+
+1. BoxMaxX[size]
+2. BoxMinX[size]
+3. BoxMaxY[size]
+4. BoxMinY[size]
+5. BoxMaxZ[size]
+6. BoxMinZ[size]
+
+which has the 5 arrays we keep hitting in the main loop all contiguous,
+and then makes base_ptr point at the fourth one (BoxMinY).
+
+You can see this all in the C++ code already, although it really doesn't
+generate great code there. The pointer-casting to do bytewise additions
+and subtractions is all wrapped into "PtrAddBytes" to de-noise the C++
+code. (Otherwise, you wouldn't able to see anything for the constant
+type casts.)
+
+Reporting intersections (first version)
+---------------------------------------
+
+This version, unlike Pierre's original approach, "natively" processes
+multiple boxes at the same time, and only does one compare for the
+bunch of them.
+
+In fact, the basic version of this approach is pretty canonical and
+would be easily written in something like ISPC (ispc.github.io). Since
+the goal of this particular version was to be as fast as possible,
+I didn't do that here though, since I wanted the option to do weird
+abstraction-breaking stuff when I wanted to. :)
+
+Anyway, the problem is that now, we can find multiple pairs at once,
+and we need to handle this correctly.
+
+Commit id 9e171cf6 has the basic approach: our new ReportIntersections
+gets a bit mask of reported intersections, and adds the pairs once by
+one. This loop uses an x86 bit scan instruction ("bsf") to find the
+location of the first set bit in the mask, remaps its ID, then adds
+it to the result array, and finally uses "mask &= mask - 1;" which is
+a standard bit trick to clear the lowest set bit in a value.
+
+This was good enough at the start, although I later switched to
+something else.
+
+The basic loop (SSE version)
+----------------------------
+
+I first started with the SSE variant (since the estimate said that
+should be faster as well) before trying to get AVX to run. Commit id
+1fd8579c has the initial implementation. The main loop is pretty
+much like described in notes_avx.txt (edi is our base_ptr,
+edx=dist_neg, ecx=dist_pos).
+
+In addition to this main loop, we also need code to process the tail
+of the array, when some of the boxes have a mMinX > MaxLimit. This
+logic is fairly easy: identify such boxes (it's just another compare,
+integer this time since we convertred the MinX array to ints) and
+exclude them from the test (that's the extra "andnps" - it excludes
+the boxes with mMinX > MaxLimit). This one is sligthly annoying
+because SSE2 has no unsigned integer compares, only signed, and my
+initial "MungeFloat" function produced unsigned integers. I fixed it
+up to produce signed integers that are currently ordered in an
+earlier commit (id 95eaaaac).
+
+This version also needs to convert boxes to SoA layout in the first
+place, which in this version is just done in straight scalar C++ code.
+
+Note that in this version, we're doing unaligned loads from the box
+arrays. That's because our loop counters point at an arbitrary box ID
+and we're going over boxes one by one. This is not ideal but not a
+showstopper in the SSE version; however, it posed major problems for...
+
+The AVX version
+---------------
+
+As I wrote in "notes_avx.txt" before I started, "if the cache can keep
+up (doubt it!)". Turns out that on the (Sandy Bridge) i7-2600K I'm
+writing this on, writing AVX code is a great way to run into L1 cache
+bandwidth limits.
+
+The basic problem is that Sandy Bridge has full 256-bit AVX execution,
+but "only" 128-bit wide load/store units (two loads and one store per
+cycle). A aligned 256-bit access keeps the respective unit busy for
+2 cycles, unaligned 256b accesses are three (best case).
+
+In short, if you're using 256-bit vectors on SNB, it's quite easy to
+swamp the L1 cache with requests, and that's what we end up doing.
+
+The initial AVX version worked, but ended up being slightly slower
+than the (new) SSE2 version. Not very useful. 
+
+To make it competitive, it needed to switch to aligned memory
+operations. Luckily, in this case, it turns out to be fairly easy:
+we just make sure to allocate the initial array 32-byte aligned (and
+make sure the distance between arrays is a multiple of 32 bytes as
+well, to make sure that if one of the pointers is aligned, they all
+are), and then make sure to get us to a 32-byte aligned address
+before we enter the main loop.
+
+So that's what the first real AVX version (commit 19146649) did.
+I found it a bit simpler to round the current box pointer *down* to
+a multiple of 32, not up. This makes the first few lanes garbage if
+we weren't already 32-byte aligned; we can deal with this by masking
+them out, the same way we handled the mMinX > MaxLimit lanes in the
+tail code.
+
+And with the alignment taken care of, the AVX version was now at
+3700 Kcycles for the test on my home machine, compared to about
+6200 Kcycles for the SSE2 version! Success.
+
+Cleaning up the setup
+---------------------
+
+At this point, the setup code is starting to be a noticeable part
+of the overall time, and in particular the code to transform the
+box array from AoS to SoA was kind of ratty. However, transforming
+from AoS to SoA is a bog-standard problem and boils down to using
+4x4 matrix transposition in this case. So I wrote the code to do
+it using SIMD instructions instead of scalar too, for about another
+200 Kcycles savings (in both the AVX and SSE2 vers).
+
+Reporting intersections (second version)
+----------------------------------------
+
+After that, I decided to take a look with VTune and discovered that
+the AVX version was spending about 10% of its time in
+ReportIntersections, and accruing pretty significant branch mis-
+prediction penalties along the way.
+
+So, time to make it less branchy.
+
+As a first step, added some code so that instead of writing to
+"Container& pairs" directly, I get to amortize the work. In
+particular, I want to only do the "is there enough space left"
+check *once* per group of (up to) 8 pairs, and grow the container
+if necessary to make sure that we can insert those 16 pairs without
+further checks. That's what "PairOutputBuffer" is for. It basically
+grabs the storage from the given Container while it's in scope,
+maintains our (somewhat looser) invariants, and is written for
+client code that just wants to poke around in the pointers directly,
+so there's no data hiding here. That was finalized in commit 389bf503,
+and decreases the cost of ReportIntersections slightly.
+
+Next, we switch to outputting the intersections all at once, using
+SIMD code. This boils down to only storing the vector lanes that
+have their corresponding mask bit set. This is a completely standard
+technique. Nicely enough, Andreas Frediksson has written it up so I
+don't have to:
+
+https://deplinenoise.files.wordpress.com/2015/03/gdc2015_afredriksson_simd.pdf
+
+(The filter/"left packing" stuff). AVX only exists on machines that
+also have PSHUFB and POPCNT so we can use both.
+
+This indeed reduced our CPU time by another ~250 Kcycles, putting
+the AVX version at about 3250 Kcycles! And that's where it currently
+still is on this machine. (That version was finalized in commit
+id f0ca3dc1).
+
+Porting back improvements to SSE2/Intrinsics code
+-------------------------------------------------
+
+Finally, I decided to port back some of these changes to the SSE2
+code and the C++ intrinsics version. In particular, port the alignment
+trick from AVX to SSE2 for a very significant win in commit d92dd5f9,
+and use the SSE2 version of the left-packing trick in commit 69baa1f1
+(I could've used SSSE3 there, but I didn't want to gratuitously
+increase the required SSE version).
+
+And then I later ported the left-packing trick for output to the
+C++ intrinsics version as well. (The alignment trick does not help
+in the intrinsics ver, since the compiler is not as good about
+managing registers and starts tripping all over its feet when you
+do it.)

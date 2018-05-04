@@ -1,0 +1,81 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Utils">
+      <UniqueIdentifier>{d50b631d-ab78-48fa-b589-e853d8653590}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="App">
+      <UniqueIdentifier>{8895af4d-fb5a-4218-8f51-1b9bbe3fc754}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="BoxPruning.cpp">
+      <Filter>App</Filter>
+    </ClCompile>
+    <ClCompile Include="StdAfx.cpp">
+      <Filter>App</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Shared\IceContainer.cpp">
+      <Filter>Utils</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Shared\IceProfiler.cpp">
+      <Filter>Utils</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Shared\IceRevisitedRadix.cpp">
+      <Filter>Utils</Filter>
+    </ClCompile>
+    <ClCompile Include="IceBoxPruning.cpp">
+      <Filter>App</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Shared\Main.cpp">
+      <Filter>Utils</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Shared\IceBoxPruning_BruteForce.cpp">
+      <Filter>Utils</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="StdAfx.h">
+      <Filter>App</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Shared\IceContainer.h">
+      <Filter>Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Shared\IceFPU.h">
+      <Filter>Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Shared\IceMemoryMacros.h">
+      <Filter>Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Shared\IcePoint.h">
+      <Filter>Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Shared\IceProfiler.h">
+      <Filter>Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Shared\IceRevisitedRadix.h">
+      <Filter>Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Shared\IceTypes.h">
+      <Filter>Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Shared\IceUtils.h">
+      <Filter>Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Shared\StdAfx.h">
+      <Filter>Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="IceBoxPruning.h">
+      <Filter>App</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Shared\IceBoxPruning_BruteForce.h">
+      <Filter>Utils</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="ReadMe.txt" />
+    <Text Include="Notes.txt">
+      <Filter>App</Filter>
+    </Text>
+  </ItemGroup>
+</Project>
