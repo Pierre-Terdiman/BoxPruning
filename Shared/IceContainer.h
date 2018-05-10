@@ -212,7 +212,7 @@
 				float			mGrowthFactor;		//!< Resize: new number of entries = old number * mGrowthFactor
 	};
 
-	class ICECORE_API Pairs : public Container
+/*	class ICECORE_API Pairs : public Container
 	{
 		public:
 		// Constructor / Destructor
@@ -223,6 +223,29 @@
 		inline_	Pair*		GetPairs()		const		{ return (Pair*)GetEntries();				}
 
 				Pairs&		AddPair(const Pair& p)		{ Add(p.id0).Add(p.id1);	return *this;	}
+	};*/
+
+	class Pairs
+	{
+		public:
+			Pairs(Container& container) : mContainer(container)	{}
+
+		inline_	void	AddPair(udword p0, udword p1)
+				{
+					// Resize if needed
+					const udword CurrentCapacity = mContainer.mMaxNbEntries;
+					const udword CurrentSize = mContainer.mCurNbEntries;
+					if(CurrentSize+2>CurrentCapacity)
+						mContainer.Resize(2);
+
+					// Add new pair
+					udword* Dst = mContainer.mEntries + CurrentSize;
+					Dst[0] = p0;
+					Dst[1] = p1;
+					mContainer.mCurNbEntries = CurrentSize+2;
+				}
+
+		Container&	mContainer;
 	};
 
 #endif // __ICECONTAINER_H__

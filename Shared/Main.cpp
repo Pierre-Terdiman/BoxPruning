@@ -130,6 +130,7 @@ static void RunPerformanceTest()
 
 		// Optimized
 		MinTime = 0xffffffff;
+//		Pairs.Resize(30000);
 		for(udword i=0;i<NB;i++)
 		{
 #ifdef USE_STL
