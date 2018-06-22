@@ -33,7 +33,7 @@ static void RunPerformanceTest()
 	const udword NbBoxes = 10000;
 
 	// Create random boxes
-	AABB* Boxes = new AABB[NbBoxes];
+	AABB* Boxes = new AABB[NbBoxes+1];	// we allocate one more box to make sure we can safely load the last entry with SIMD
 	const AABB** List = new const AABB*[NbBoxes];
 
 	srand(42);
@@ -466,12 +466,14 @@ static void TestBipartiteBoxPruning(udword NbBoxes, const AABB** List, const AAB
 #ifdef USE_DIRECT_BOUNDS
 	BipartiteBoxPruning(NbBoxes0, Boxes, NbBoxes1, Boxes1, Pairs1);
 #else
-#error fixme
-	CompleteBoxPruning(NbBoxes, List, Pairs1);
+	//#error fixme
+	//CompleteBoxPruning(NbBoxes, List, Pairs1);
+	assert(0);
 #endif
 #else
-#error fixme
-	CompleteBoxPruning(NbBoxes, List, Pairs1, axes);
+//#error fixme
+//	CompleteBoxPruning(NbBoxes, List, Pairs1, axes);
+	assert(0);
 #endif
 
 	if(Pairs0.GetNbEntries() != Pairs1.GetNbEntries())
